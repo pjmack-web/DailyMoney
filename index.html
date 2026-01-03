@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Daily Income & Spend Tracker</title>
+
+<style>
+    body {
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: linear-gradient(135deg, #0f2027, #203a43, #2c5364);
+        color: #ffffff;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 100vh;
+        margin: 0;
+    }
+
+    .card {
+        background: rgba(255,255,255,0.08);
+        padding: 28px 32px;
+        border-radius: 16px;
+        box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+        max-width: 480px;
+        width: 100%;
+    }
+
+    h1 {
+        text-align: center;
+        margin-top: 0;
+        margin-bottom: 14px;
+    }
+
+    label {
+        font-size: 0.8rem;
+        opacity: 0.8;
+    }
+
+    input {
+        width: 100%;
+        padding: 8px;
+        border-radius: 8px;
+        border: none;
+        margin-top: 4px;
+        margin-bottom: 10px;
+        font-size: 0.9rem;
+        text-align: center;
+    }
+
+    .section {
+        margin-top: 14px;
+    }
+
+    .amount {
+        font-size: 1.7rem;
+        font-weight: bold;
+        text-align: center;
+    }
+
+    .progress-bg {
+        width: 100%;
+        height: 12px;
+        background: rgba(255,255,255,0.15);
+        border-radius: 6px;
+        overflow: hidden;
+        margin-top: 6px;
+    }
+
+    .progress-fill {
+        height: 100%;
+        width: 0%;
+        background: linear-gradient(90deg, #00c6ff, #0072ff);
+    }
+
+    .progress-text {
+        font-size: 0.75rem;
+        opacity: 0.7;
+        text-align: right;
+        margin-top: 4px;
+    }
+
+    .category {
+        margin-top: 16px;
+    }
+
+    .category-header {
+        display: flex;
+        gap: 8px;
+    }
+
+    .category-header input:first-child {
+        flex: 2;
+    }
+
+    .category-header input:last-child {
+        flex: 1;
+    }
+
+    .category-info {
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.8rem;
+        opacity: 0.85;
+        margin-top: 4px;
+    }
+
+    .footer {
+        text-align: center;
+        font-size: 0.7rem;
+        opacity: 0.6;
+        margin-top: 16px;
+    }
+
+    /* Optional: red fill for negative net */
+    .negative-fill {
+        background: linear-gradient(90deg, #ff4b4b, #ff0000);
+    }
+</style>
+</head>
+
+<body>
+<div class="card">
+    <h1>📊 Daily Income & Spend Tracker</h1>
+
+    <label>Fortnightly Income ($)</label>
+    <input type="number" id="incomeInput" value="3472.67" step="0.01"/>
+
+    <!-- Income Bar -->
+    <div class="section">
+        <div class="amount" id="incomeAmount">$0.00</div>
+        <div class="progress-bg">
+            <div class="progress-fill" id="incomeFill"></div>
+        </div>
+        <div class="progress-text" id="incomeText"></div>
+    </div>
+
+    <!-- Total Spend Bar -->
+    <div class="section">
+        <div class="amount" id="totalSpendAmount">$0.00</div>
+        <div class="progress-bg">
+            <div class="progress-fill" id="totalSpendFill"></div>
+        </div>
+        <div class="progress-text" id="totalSpendText"></div>
+    </div>
+
+    <!-- Net Income Bar -->
+    <div class="section">
+        <div class="amount" id="netAmount">$0.00</div>
+        <div class="progress-bg">
+            <div class="progress-fill" id="netFill"></div>
+        </div>
+        <div class="progress-text" id="netText"></div>
+    </div>
+
+    <!-- Individual Categories -->
+    <div id="categories"></div>
+
+    <div class="footer">All values reset at midnight</div>
+</div>
+
+<script>
+    const SECONDS_IN_DAY = 86400;
+
+    function secondsSinceMidnight() {
+        const now = new Date();
+        const midnight = new Date(now);
+        midnight.setHours(0, 0, 0, 0);
+        return (now - midnight) / 1000;
+    }
+
+    const incomeInput = document.getElementById("incomeInput");
+    const incomeAmount = document.getElementById("incomeAmount");
+    const incomeFill = document.getElementById("incomeFill");
+    const incomeText = document.getElementById("incomeText");
+
+    const totalSpendAmount = document.getElementById("totalSpendAmount");
+    const totalSpendFill = document.getElementById("totalSpendFill");
+    const totalSpendText = document.getElementById("totalSpendText");
+
+    const netAmount = document.getElementById("netAmount");
+    const netFill = document.getElementById("netFill");
+    const netText = document.getElementById("netText");
+
+    const categoriesEl = document.getElementById("categories");
+
+    const categories = Array.from({ length: 5 }, () => ({
+        fortnightly: 0,
+        daily: 0,
+        elements: {}
+    }));
+
+    function createCategoryUI(category) {
+        const wrapper = document.createElement("div");
+        wrapper.className = "category";
+
+        wrapper.innerHTML = `
+            <div class="category-header">
+                <input type="text" placeholder="Category"/>
+                <input type="number" placeholder="$ / fortnight" step="0.01"/>
+            </div>
+            <div class="category-info">
+                <span class="value">$0.00</span>
+                <span class="percent">0%</span>
+            </div>
+            <div class="progress-bg">
+                <div class="progress-fill"></div>
+            </div>
+        `;
+
+        const amountInput = wrapper.querySelectorAll("input")[1];
+        const valueEl = wrapper.querySelector(".value");
+        const percentEl = wrapper.querySelector(".percent");
+        const fillEl = wrapper.querySelector(".progress-fill");
+
+        amountInput.addEventListener("input", e => {
+            category.fortnightly = parseFloat(e.target.value) || 0;
+            category.daily = category.fortnightly / 14;
+        });
+
+        category.elements = { valueEl, percentEl, fillEl };
+        categoriesEl.appendChild(wrapper);
+    }
+
+    categories.forEach(createCategoryUI);
+
+    function tick() {
+        const elapsed = Math.min(secondsSinceMidnight(), SECONDS_IN_DAY);
+
+        // Income
+        const fortnightlyIncome = parseFloat(incomeInput.value) || 0;
+        const dailyIncome = fortnightlyIncome / 14;
+        const incomeToday = (dailyIncome / SECONDS_IN_DAY) * elapsed;
+        const incomePct = dailyIncome > 0 ? (incomeToday / dailyIncome) * 100 : 0;
+
+        incomeAmount.textContent =
+            `$${incomeToday.toFixed(2)} / $${dailyIncome.toFixed(2)}`;
+        incomeFill.style.width = `${incomePct}%`;
+        incomeText.textContent = `${incomePct.toFixed(1)}% of today`;
+
+        // Categories & total spend
+        let totalSpent = 0;
+        categories.forEach(cat => {
+            if (cat.daily <= 0) return;
+            const spentToday = (cat.daily / SECONDS_IN_DAY) * elapsed;
+            totalSpent += spentToday;
+
+            const percentOfIncome = dailyIncome > 0 ? (spentToday / dailyIncome) * 100 : 0;
+
+            cat.elements.valueEl.textContent = `$${spentToday.toFixed(2)}`;
+            cat.elements.percentEl.textContent = `${percentOfIncome.toFixed(1)}%`;
+            cat.elements.fillEl.style.width = `${percentOfIncome}%`;
+        });
+
+        // Total spend bar
+        const totalPct = dailyIncome > 0 ? (totalSpent / dailyIncome) * 100 : 0;
+        totalSpendAmount.textContent = `$${totalSpent.toFixed(2)}`;
+        totalSpendFill.style.width = `${totalPct}%`;
+        totalSpendText.textContent = `${totalPct.toFixed(1)}% of today`;
+
+        // Net income bar
+        const netToday = incomeToday - totalSpent;
+        const netPct = dailyIncome > 0 ? (netToday / dailyIncome) * 100 : 0;
+
+        netAmount.textContent = `$${netToday.toFixed(2)}`;
+        netFill.style.width = `${Math.max(0, netPct)}%`;
+        netFill.className = `progress-fill${netPct < 0 ? ' negative-fill' : ''}`;
+        netText.textContent = `${netPct.toFixed(1)}% of today`;
+
+        requestAnimationFrame(tick);
+    }
+
+    tick();
+</script>
+</body>
+</html>
